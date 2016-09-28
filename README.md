@@ -1,3 +1,3 @@
 # LAT
 
-Personal [LibArchive](https://github/libarchive/libarchive) Tests.
+Personal [LibArchive](https://github.com/libarchive/libarchive) Tests.
