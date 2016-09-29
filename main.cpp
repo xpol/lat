@@ -1,45 +1,61 @@
 #include <archive.h>
 #include <archive_entry.h>
-#include <string>
-#include <locale>
-#include <codecvt>
+#include <iconv.h>
+#include <uchardet/uchardet.h>
 
-std::string toutf8(std::wstring str) {
-    std::wstring_convert<std::codecvt_utf8<wchar_t>> utf8_conv;
-    return utf8_conv.to_bytes(str);
-}
+#include <iostream>
+#include <locale>
+#include <memory>
+#include <string>
+
+struct Chardet {
+    Chardet() : d(uchardet_new()) {}
+    ~Chardet() {
+        uchardet_delete(d);
+    }
+    Chardet& operator <<(const std::string& s) {
+        uchardet_handle_data(d, s.data(), s.size());
+        return *this;
+    }
+    std::string endoding() {
+        uchardet_data_end(d);
+        return uchardet_get_charset(d);
+    }
+
+    void reset() {
+        uchardet_reset(d);
+    }
+private:
+    uchardet_t d;
+};
+
+
 
 int main(int argc, char* argv[]) {
-    ssize_t size;
-    int r;
-    char buff[128] = {0};
-    struct archive_entry * ae = NULL;
-    struct archive *a = NULL;
-
     if (argc < 2)
         return 1;
 
-    a = archive_read_new();
+    setlocale(LC_ALL, "");
+    struct archive *a = archive_read_new();
+    std::unique_ptr<struct archive, decltype(&archive_read_free)> ar(a, archive_read_free);
     archive_read_support_filter_all(a);
     archive_read_support_format_all(a);
-    r = archive_read_open_filename(a, argv[1], 16384);
+    int r = archive_read_open_filename(a, argv[1], 16384);
 
     if (r != ARCHIVE_OK) {
-        printf("%s\n", archive_error_string(a));
-        goto errexit;
+        std::cerr << archive_error_string(a) << std::endl;
+        return 1;
     }
-    {
-        while ((r = archive_read_next_header(a, &ae)) == ARCHIVE_OK) {
-            printf("%s\n", archive_entry_pathname(ae));
-            printf("%d files\n", archive_file_count(a));
-        }
-        if (r != ARCHIVE_OK) {
-            printf("%s\n", archive_error_string(a));
-            goto errexit;
-        }
+
+    Chardet cd;
+    struct archive_entry * ae = nullptr;
+    while ((r = archive_read_next_header(a, &ae)) == ARCHIVE_OK) {
+        std::string s(archive_entry_pathname(ae));
+        cd << s;
+        std::cout << s << std::endl;
     }
-errexit:
-    archive_read_close(a);
-    archive_read_free(a);
+
+    std::cout << cd.endoding() << std::endl;
+
     return 0;
 }
